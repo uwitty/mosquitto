@@ -23,6 +23,12 @@ foreign import ccall "mosquitto.h mosquitto_new"
 foreign import ccall "mosquitto.h mosquitto_destroy"
   c_mosquitto_destroy :: Mosq -> IO ()
 
+foreign import ccall "mosquitto.h mosquitto_will_set"
+  c_mosquitto_will_set :: Mosq -> CString -> CInt -> Ptr a -> CInt -> CInt -> IO CInt
+
+foreign import ccall "mosquitto.h mosquitto_will_clear"
+  c_mosquitto_will_clear :: Mosq -> IO CInt
+
 foreign import ccall "mosquitto.h mosquitto_connect"
   c_mosquitto_connect :: Mosq -> CString -> CInt -> CInt -> IO CInt
 

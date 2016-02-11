@@ -3,6 +3,8 @@ module Network.Mosquitto (
       MosqContext
     , MosqEvent(..)
     -- * Mosquitto
+    , setWill
+    , clearWill
     , connect
     , disconnect
     , getNextEvents
@@ -93,6 +95,21 @@ pushEvent :: IORef [MosqEvent] -> MosqEvent -> IO ()
 pushEvent ref e = do
     es <- readIORef ref
     writeIORef ref (e:es)
+
+setWill :: MosqContext -> String -> BS.ByteString -> Int -> Bool -> IO Int
+setWill context topicName payload qos retain = do
+    fmap fromIntegral $
+         withCStringLen topicName $ \(topicNameC, _) ->
+         BS.useAsCString payload $ \payloadC -> do
+           c_mosquitto_will_set (contextMosq context)
+                                topicNameC
+                                (fromIntegral (BS.length payload))
+                                payloadC
+                                (fromIntegral qos)
+                                (if retain then 1 else 0)
+
+clearWill :: MosqContext -> IO Int
+clearWill context = c_mosquitto_will_clear (contextMosq context) >>= return . fromIntegral
 
 connect :: MosqContext -> String -> Int -> Int -> IO Int
 connect context hostname port keepAlive =

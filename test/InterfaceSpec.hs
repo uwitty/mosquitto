@@ -55,7 +55,7 @@ interfaceSpec = do
         publishCallbackC    <- wrapOnPublishCallback (publishCallback results)
         disconnectCallbackC <- wrapOnDisconnectCallback (disconnectCallback results)
 
-        -- initialize mosquitto
+        -- initialize
         c_mosquitto_lib_init >>= (`shouldBe` 0)
         mosq <- c_mosquitto_new nullPtr 1 nullPtr
         mosq `shouldSatisfy` (/= nullPtr)
@@ -64,9 +64,19 @@ interfaceSpec = do
         c_mosquitto_publish_callback_set mosq publishCallbackC
         c_mosquitto_disconnect_callback_set mosq disconnectCallbackC
 
+        -- will
+        (withCStringLen "test/will" $ \(topicNameC, _) ->
+         withCStringLen "will message (1)" $ \(willC, len) ->
+          c_mosquitto_will_set mosq topicNameC (fromIntegral len) willC  2 0) >>= (`shouldBe` 0)
+        c_mosquitto_will_clear mosq >>= (`shouldBe` 0)
+        (withCStringLen "test/will" $ \(topicNameC, _) ->
+         withCStringLen "will message (2)" $ \(willC, len) ->
+          c_mosquitto_will_set mosq topicNameC (fromIntegral len) willC  2 0) >>= (`shouldBe` 0)
+
         -- connect to broker
         (withCStringLen "localhost" $
           \(hostnameC, _len) -> c_mosquitto_connect mosq hostnameC 1883 500) >>= (`shouldBe` 0)
+        -- subscribe/publish
         (withCStringLen "test/test" $ \(patternC, _len) ->
           c_mosquitto_subscribe mosq nullPtr patternC 2) >>= (`shouldBe` 0)
         (withCStringLen "test/test" $ \(topicNameC, _len) ->
@@ -78,6 +88,7 @@ interfaceSpec = do
         fmap connected    (readIORef results) >>= (`shouldBe` True)
         fmap subscribed   (readIORef results) >>= (`shouldBe` True)
         fmap published    (readIORef results) >>= (`shouldBe` True)
+        fmap disconnected (readIORef results) >>= (`shouldBe` False)
 
         -- disconnect
         c_mosquitto_disconnect mosq >>= (`shouldBe` 0)
@@ -85,7 +96,7 @@ interfaceSpec = do
         c_mosquitto_loop mosq 10 1 >>= (`shouldBe` errNoConn)
         fmap disconnected (readIORef results) >>= (`shouldBe` True)
 
-        -- cleanup mosquitto
+        -- cleanup
         c_mosquitto_destroy mosq
         c_mosquitto_lib_cleanup >>= (`shouldBe` 0)
 
