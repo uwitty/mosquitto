@@ -52,10 +52,9 @@ data MosqEvent = Message
   deriving Show
 
 newMosqContext :: Mosq -> IO MosqContext
-newMosqContext mosq = do
-    if mosq == nullPtr
-      then throwIO $ AssertionFailed "invalid mosq object"
-      else do
+newMosqContext mosq = if mosq == nullPtr
+    then throwIO $ AssertionFailed "invalid mosq object"
+    else do
         events <- newIORef ([] :: [MosqEvent])
         connectCallbackC <- wrapOnConnectCallback (connectCallback events)
         c_mosquitto_connect_callback_set mosq connectCallbackC
@@ -73,9 +72,7 @@ newMosqContext mosq = do
   where
     connectCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> CInt -> IO ()
     connectCallback events _mosq _ result = do
-      if result == 0
-        then pushEvent events (ConnectResult (fromIntegral result))
-        else return ()
+        pushEvent events (ConnectResult (fromIntegral result))
     messageCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> Ptr MessageC -> IO ()
     messageCallback events _mosq _ messageC = do
         msg   <- peek messageC
