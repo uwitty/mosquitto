@@ -44,6 +44,9 @@ foreign import ccall "mosquitto.h mosquitto_loop_forever"
 foreign import ccall "mosquitto.h mosquitto_connect_callback_set"
   c_mosquitto_connect_callback_set :: Mosq -> FunPtr (Mosq -> Ptr () -> CInt -> IO ()) -> IO ()
 
+foreign import ccall "mosquitto.h mosquitto_disconnect_callback_set"
+  c_mosquitto_disconnect_callback_set :: Mosq -> FunPtr (Mosq -> Ptr () -> CInt -> IO ()) -> IO ()
+
 foreign import ccall "mosquitto.h mosquitto_publish_callback_set"
   c_mosquitto_publish_callback_set :: Mosq -> FunPtr (Mosq -> Ptr () -> CInt -> IO ()) -> IO ()
 

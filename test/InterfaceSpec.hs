@@ -38,9 +38,10 @@ versionSpec = do
     dummy :: CInt
     dummy = 0
 
-data CallbackResults = CallbackResults { connected  :: Bool
-                                       , subscribed :: Bool
-                                       , published  :: Bool
+data CallbackResults = CallbackResults { connected    :: Bool
+                                       , subscribed   :: Bool
+                                       , published    :: Bool
+                                       , disconnected :: Bool
                                        }
 
 interfaceSpec :: Spec
@@ -48,10 +49,11 @@ interfaceSpec = do
     describe "mosquitto C functions" $ do
       it "calls lib mosquitto c functions" $ example $ do
         -- wrap callbacks
-        results <- newIORef $ CallbackResults False False False
-        connectCallbackC   <- wrapOnConnectCallback (connectCallback results)
-        subscribeCallbackC <- wrapOnSubscribeCallback (subscribeCallback results)
-        publishCallbackC   <- wrapOnPublishCallback (publishCallback results)
+        results <- newIORef $ CallbackResults False False False False
+        connectCallbackC    <- wrapOnConnectCallback (connectCallback results)
+        subscribeCallbackC  <- wrapOnSubscribeCallback (subscribeCallback results)
+        publishCallbackC    <- wrapOnPublishCallback (publishCallback results)
+        disconnectCallbackC <- wrapOnDisconnectCallback (disconnectCallback results)
 
         -- initialize mosquitto
         c_mosquitto_lib_init >>= (`shouldBe` 0)
@@ -60,6 +62,7 @@ interfaceSpec = do
         c_mosquitto_connect_callback_set mosq connectCallbackC
         c_mosquitto_subscribe_callback_set mosq subscribeCallbackC
         c_mosquitto_publish_callback_set mosq publishCallbackC
+        c_mosquitto_disconnect_callback_set mosq disconnectCallbackC
 
         -- connect to broker
         (withCStringLen "localhost" $
@@ -72,16 +75,22 @@ interfaceSpec = do
         -- mosquitto_loop
         replicateM_ 5 $ c_mosquitto_loop mosq 10 1 >>= (`shouldBe` 0) >> threadDelay 100000
         -- verify
-        fmap connected  (readIORef results) >>= (`shouldBe` True)
-        fmap subscribed (readIORef results) >>= (`shouldBe` True)
-        fmap published  (readIORef results) >>= (`shouldBe` True)
+        fmap connected    (readIORef results) >>= (`shouldBe` True)
+        fmap subscribed   (readIORef results) >>= (`shouldBe` True)
+        fmap published    (readIORef results) >>= (`shouldBe` True)
+
+        -- disconnect
+        c_mosquitto_disconnect mosq >>= (`shouldBe` 0)
+        replicateM_ 3 $ c_mosquitto_loop mosq 10 1 >>= (`shouldSatisfy` (\x -> x == 0 || x == errNoConn)) >> threadDelay 10000
+        c_mosquitto_loop mosq 10 1 >>= (`shouldBe` errNoConn)
+        fmap disconnected (readIORef results) >>= (`shouldBe` True)
 
         -- cleanup mosquitto
-        c_mosquitto_disconnect mosq >>= (`shouldBe` 0)
         c_mosquitto_destroy mosq
         c_mosquitto_lib_cleanup >>= (`shouldBe` 0)
 
         -- free wrapped functions
+        freeHaskellFunPtr disconnectCallbackC
         freeHaskellFunPtr publishCallbackC
         freeHaskellFunPtr subscribeCallbackC
         freeHaskellFunPtr connectCallbackC
@@ -102,6 +111,11 @@ interfaceSpec = do
     publishCallback ref _mosq _userdata _mid = do
       results <- readIORef ref
       writeIORef ref $ results {published = True}
+
+    disconnectCallback :: IORef CallbackResults -> Mosq -> Ptr () -> CInt -> IO ()
+    disconnectCallback ref _mosq _userdata _mid = do
+      results <- readIORef ref
+      writeIORef ref $ results {disconnected = True}
 
 interfaceErrorSpec :: Spec
 interfaceErrorSpec = do

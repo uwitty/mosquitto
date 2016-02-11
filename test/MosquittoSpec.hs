@@ -35,7 +35,9 @@ mosquittoSpec = do
           _ <- connect ctx "localhost" 1883 500
           _ <- subscribe ctx "test/test" 2
           _ <- publish ctx "test/test" (BS.pack [84, 84, 84]) 2 False
-          loop ctx 10 []
+          es <- loop ctx 10 []
+          _ <- disconnect ctx
+          loop ctx 3 es
         events `shouldSatisfy` (\x -> (length x) > 0)
   where
     loop :: MosqContext -> Int -> [MosqEvent] -> IO [MosqEvent]

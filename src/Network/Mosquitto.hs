@@ -42,6 +42,7 @@ data MosqEvent = Message
                      , messageRetain  :: !Bool
                      }
                | ConnectResult {connectResultCode :: !Int}
+               | DisconnectResult {disconnectResultCode :: !Int}
   deriving Show
 
 newMosqContext :: Mosq -> IO MosqContext
@@ -54,10 +55,14 @@ newMosqContext mosq = do
         c_mosquitto_connect_callback_set mosq connectCallbackC
         messageCallbackC <- wrapOnMessageCallback (messageCallback events)
         c_mosquitto_message_callback_set mosq messageCallbackC
+        disconnectCallbackC <- wrapOnDisconnectCallback (disconnectCallback events)
+        c_mosquitto_disconnect_callback_set mosq disconnectCallbackC
         return MosqContext { contextMosq = mosq
                            , contextEvents = events
                            , contextCallbacks = [ castFunPtr connectCallbackC
-                                                , castFunPtr messageCallbackC]
+                                                , castFunPtr messageCallbackC
+                                                , castFunPtr disconnectCallbackC
+                                                ]
                            }
   where
     connectCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> CInt -> IO ()
@@ -75,6 +80,9 @@ newMosqContext mosq = do
                                    (BS.pack payload)
                                    (fromIntegral $ messageCQos msg)
                                    (messageCRetain msg)
+    disconnectCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> CInt -> IO ()
+    disconnectCallback events _mosq _ result = do
+        pushEvent events (DisconnectResult (fromIntegral result))
 
 freeMosqContext :: MosqContext -> IO ()
 freeMosqContext context = mapM_ freeHaskellFunPtr (contextCallbacks context)
