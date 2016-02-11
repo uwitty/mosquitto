@@ -25,8 +25,10 @@ import Control.Monad.IO.Class
 import Data.IORef
 import Data.Maybe(isJust, fromJust)
 import qualified Data.ByteString as BS
+import Data.ByteString.Internal(toForeignPtr)
 import Control.Exception(bracket, bracket_, throwIO, AssertionFailed(..))
-import Foreign.Ptr(Ptr, FunPtr, nullPtr, castFunPtr, freeHaskellFunPtr)
+import Foreign.Ptr(Ptr, FunPtr, nullPtr, plusPtr, castFunPtr, freeHaskellFunPtr)
+import Foreign.ForeignPtr(withForeignPtr)
 import Foreign.Storable(peek)
 import Foreign.C.String(withCStringLen, peekCString)
 import Foreign.C.Types(CInt(..))
@@ -98,15 +100,15 @@ pushEvent ref e = do
 
 setWill :: MosqContext -> String -> BS.ByteString -> Int -> Bool -> IO Int
 setWill context topicName payload qos retain = do
-    fmap fromIntegral $
-         withCStringLen topicName $ \(topicNameC, _) ->
-         BS.useAsCString payload $ \payloadC -> do
-           c_mosquitto_will_set (contextMosq context)
-                                topicNameC
-                                (fromIntegral (BS.length payload))
-                                payloadC
-                                (fromIntegral qos)
-                                (if retain then 1 else 0)
+    let (payloadFP, off, _len) = toForeignPtr payload
+    fmap fromIntegral $ withCStringLen topicName $ \(topicNameC, _) ->
+                        withForeignPtr payloadFP $ \payloadP -> do
+                          c_mosquitto_will_set (contextMosq context)
+                                               topicNameC
+                                               (fromIntegral (BS.length payload))
+                                               (payloadP `plusPtr` off)
+                                               (fromIntegral qos)
+                                               (if retain then 1 else 0)
 
 clearWill :: MosqContext -> IO Int
 clearWill context = c_mosquitto_will_clear (contextMosq context) >>= return . fromIntegral
@@ -136,10 +138,16 @@ subscribe context topicName qos = do
 
 publish :: MosqContext -> String -> BS.ByteString -> Int -> Bool -> IO Int
 publish context topicName payload qos retain = do
-    fmap fromIntegral $
-         withCStringLen topicName $ \(topicNameC, _) ->
-         BS.useAsCString payload $ \payloadC -> do
-           c_mosquitto_publish (contextMosq context) nullPtr topicNameC (fromIntegral (BS.length payload)) payloadC (fromIntegral qos) (if retain then 1 else 0)
+    let (payloadFP, off, _len) = toForeignPtr payload
+    fmap fromIntegral $ withCStringLen topicName $ \(topicNameC, _) ->
+                        withForeignPtr payloadFP $ \payloadP ->
+                          c_mosquitto_publish (contextMosq context)
+                                              nullPtr
+                                              topicNameC
+                                              (fromIntegral (BS.length payload))
+                                              (payloadP `plusPtr` off)
+                                              (fromIntegral qos)
+                                              (if retain then 1 else 0)
 
 -- Utility
 
