@@ -44,8 +44,6 @@ foreign import ccall "mosquitto.h mosquitto_loop_forever"
 foreign import ccall "mosquitto.h mosquitto_connect_callback_set"
   c_mosquitto_connect_callback_set :: Mosq -> FunPtr (Mosq -> Ptr () -> CInt -> IO ()) -> IO ()
 
--- mosquitto_disconnect_callback_set
-
 foreign import ccall "mosquitto.h mosquitto_publish_callback_set"
   c_mosquitto_publish_callback_set :: Mosq -> FunPtr (Mosq -> Ptr () -> CInt -> IO ()) -> IO ()
 
@@ -62,17 +60,20 @@ foreign import ccall "mosquitto.h mosquitto_log_callback_set"
 -- callback wrapper
 
 foreign import ccall "wrapper"
-  wrapOnUnsubscribeCallback :: (Mosq -> Ptr () -> CInt -> CString -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> CInt -> CString -> IO ()))
+  wrapOnConnectCallback :: (Mosq -> Ptr () -> CInt -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> CInt -> IO ()))
 
 foreign import ccall "wrapper"
-  wrapOnConnectCallback :: (Mosq -> Ptr () -> CInt -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> CInt -> IO ()))
+  wrapOnDisconnectCallback :: (Mosq -> Ptr () -> CInt -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> CInt -> IO ()))
 
 foreign import ccall "wrapper"
   wrapOnPublishCallback :: (Mosq -> Ptr () -> CInt -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> CInt -> IO ()))
 
 foreign import ccall "wrapper"
+  wrapOnMessageCallback :: (Mosq -> Ptr () -> Ptr MessageC -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> Ptr MessageC -> IO ()))
+
+foreign import ccall "wrapper"
   wrapOnSubscribeCallback :: (Mosq -> Ptr () -> CInt -> CInt -> Ptr CInt -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> CInt -> CInt -> Ptr CInt -> IO ()))
 
 foreign import ccall "wrapper"
-  wrapOnMessageCallback :: (Mosq -> Ptr () -> Ptr MessageC -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> Ptr MessageC -> IO ()))
+  wrapOnUnsubscribeCallback :: (Mosq -> Ptr () -> CInt -> CString -> IO ()) -> IO (FunPtr (Mosq -> Ptr () -> CInt -> CString -> IO ()))
 
