@@ -59,6 +59,9 @@ foreign import ccall "mosquitto.h mosquitto_subscribe_callback_set"
 foreign import ccall "mosquitto.h mosquitto_log_callback_set"
   c_mosquitto_log_callback_set :: Mosq -> FunPtr (Mosq -> Ptr () -> CInt -> CString -> IO ()) -> IO CInt
 
+foreign import ccall "mosquitto.h mosquitto_strerror"
+  c_mosquitto_strerror :: CInt -> IO CString
+
 
 -- callback wrapper
 

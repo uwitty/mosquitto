@@ -127,6 +127,7 @@ interfaceErrorSpec = do
         (withCStringLen "test/test" $ \(patternC, _len) ->
           c_mosquitto_subscribe mosq nullPtr patternC 2) >>= (`shouldBe` errNoConn)
         c_mosquitto_disconnect mosq >>= (`shouldBe` errNoConn)
+        c_mosquitto_strerror errNoConn >>= (`shouldSatisfy` (/= nullPtr))
         c_mosquitto_destroy mosq
         c_mosquitto_lib_cleanup >>= (`shouldBe` 0)
 

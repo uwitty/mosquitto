@@ -12,6 +12,8 @@ module Network.Mosquitto (
     , withInit
     , withMosqContext
     , withConnect
+    -- * Utility
+    , strerror
     ) where
 
 import Network.Mosquitto.C.Interface
@@ -122,7 +124,10 @@ publish context topicName payload qos retain = do
          BS.useAsCString payload $ \payloadC -> do
            c_mosquitto_publish (contextMosq context) nullPtr topicNameC (fromIntegral (BS.length payload)) payloadC (fromIntegral qos) (if retain then 1 else 0)
 
--- util
+-- Utility
+
+strerror :: Int -> IO String
+strerror err = c_mosquitto_strerror (fromIntegral err) >>= peekCString
 
 -- Helper
 
