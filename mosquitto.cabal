@@ -12,27 +12,36 @@ maintainer:          uyuwitty@gmail.com
 copyright:           (c) 2016 uwitty
 category:            Network
 build-type:          Simple
--- extra-source-files:  
+-- extra-source-files:
 cabal-version:       >=1.10
 stability:           experimental
 
 library
-  exposed-modules:     Network.Mosquitto, Network.Mosquitto.C.Types, Network.Mosquitto.C.Interface
-  -- other-modules:       
-  other-extensions:    ForeignFunctionInterface
-  build-depends:       base >=4.8 && <4.9, transformers, bytestring
-  hs-source-dirs:      src
-  build-tools:         hsc2hs
-  default-language:    Haskell2010
-  ghc-options:         -Wall
-  extra-libraries:     mosquitto
+  default-language:  Haskell2010
+  exposed-modules:   Network.Mosquitto
+                   , Network.Mosquitto.C.Types
+                   , Network.Mosquitto.C.Interface
+  -- other-modules:
+  build-depends:     base >=4.8 && <4.9
+                   , transformers
+                   , bytestring
+  hs-source-dirs:    src
+  build-tools:       hsc2hs
+  ghc-options:       -Wall
+  -- other-extensions:
+  extra-libraries:   mosquitto
 
 test-suite spec
-  hs-source-dirs: test
-  main-is: Spec.hs
-  other-modules:       InterfaceSpec
-  type: exitcode-stdio-1.0
-  default-language:    Haskell2010
-  ghc-options:         -Wall
-  build-depends:    base, mtl, hspec, mosquitto, bytestring
+  default-language:  Haskell2010
+  type:              exitcode-stdio-1.0
+  hs-source-dirs:    test
+  main-is:           Spec.hs
+  other-modules:     MosquittoSpec
+                   , InterfaceSpec
+  ghc-options:       -Wall
+  build-depends:     base
+                   , mtl
+                   , bytestring
+                   , hspec
+                   , mosquitto
 
