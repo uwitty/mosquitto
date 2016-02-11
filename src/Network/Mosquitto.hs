@@ -28,7 +28,11 @@ import Foreign.C.String(withCStringLen, peekCString)
 import Foreign.C.Types(CInt(..))
 import Foreign.Marshal.Array(peekArray)
 
-data MosqContext = MosqContext {contextMosq :: Mosq, contextEvents :: IORef [MosqEvent], contextCallbacks :: [FunPtr ()]}
+data MosqContext = MosqContext
+                       { contextMosq      :: !Mosq
+                       , contextEvents    :: IORef [MosqEvent]
+                       , contextCallbacks :: ![FunPtr ()]
+                       }
 
 data MosqEvent = Message 
                      { messageID      :: !Int
