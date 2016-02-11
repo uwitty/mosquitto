@@ -47,8 +47,14 @@ data MosqEvent = Message
                      , messageQos     :: !Int
                      , messageRetain  :: !Bool
                      }
-               | ConnectResult {connectResultCode :: !Int}
-               | DisconnectResult {disconnectResultCode :: !Int}
+               | ConnectResult
+                     { connectResultCode   :: !Int
+                     , connectResultString :: !String
+                     }
+               | DisconnectResult
+                     { disconnectResultCode   :: !Int
+                     , disconnectResultString :: !String
+                     }
   deriving Show
 
 newMosqContext :: Mosq -> IO MosqContext
@@ -72,7 +78,9 @@ newMosqContext mosq = if mosq == nullPtr
   where
     connectCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> CInt -> IO ()
     connectCallback events _mosq _ result = do
-        pushEvent events (ConnectResult (fromIntegral result))
+        let code = fromIntegral result
+        str <- strerror code
+        pushEvent events $ ConnectResult code str
     messageCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> Ptr MessageC -> IO ()
     messageCallback events _mosq _ messageC = do
         msg   <- peek messageC
@@ -85,7 +93,9 @@ newMosqContext mosq = if mosq == nullPtr
                                    (messageCRetain msg)
     disconnectCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> CInt -> IO ()
     disconnectCallback events _mosq _ result = do
-        pushEvent events (DisconnectResult (fromIntegral result))
+        let code = fromIntegral result
+        str <- strerror code
+        pushEvent events $ DisconnectResult code str
 
 freeMosqContext :: MosqContext -> IO ()
 freeMosqContext context = mapM_ freeHaskellFunPtr (contextCallbacks context)
