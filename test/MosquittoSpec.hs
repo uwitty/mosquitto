@@ -13,7 +13,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = helperSpec >> contextSpec >> mosquittoSpec
+spec = helperSpec >> mosquittoSpec
 
 helperSpec :: Spec
 helperSpec = do
@@ -22,29 +22,10 @@ helperSpec = do
         initialized <- liftIO $ withInit (return True)
         initialized `shouldBe` True
 
-      it "creates new mosquitto object" $ do
-        created <- liftIO $ withInit . withMosq Nothing $ \_mosq -> return True
-        created `shouldBe` True
-
     describe "connect" $ do
       it "connects to broker in localhost" $ do
-        connected <- liftIO $ withInit . withMosq Nothing $ \mosq -> withConnect mosq "localhost" 1883 60 (return True)
+        connected <- liftIO $ withInit . withMosqContext Nothing $ \ctx -> withConnect ctx "localhost" 1883 60 (return True)
         connected `shouldBe` True
-
-      it "connects to broker and gets ack from localhost" $ do
-        connected <- liftIO $ withInit . withMosq Nothing $ \mosq -> withConnack mosq "localhost" 1883 60 3000 (return True)
-        connected `shouldBe` True
-
-contextSpec :: Spec
-contextSpec = do
-    describe "test" $ do
-      it "connects to broker in localhost" $ do
-        connected <- liftIO $ withInit . withMosq Nothing $ \mosq -> do
-          ctx <- newMosqContext mosq
-          result <- connect ctx "localhost" 1883 500
-          freeMosqContext ctx
-          return result
-        connected `shouldBe` 0
 
 mosquittoSpec :: Spec
 mosquittoSpec = do
