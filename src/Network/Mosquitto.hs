@@ -1,8 +1,12 @@
 module Network.Mosquitto (
     -- * Data structure
-      MosqContext
-    , MosqEvent(..)
+      Mosquitto
+    , Event(..)
     -- * Mosquitto
+    , initializeMosquittoLib
+    , cleanupMosquittoLib
+    , newMosquitto
+    , destroyMosquitto
     , setWill
     , clearWill
     , connect
@@ -12,7 +16,7 @@ module Network.Mosquitto (
     , publish
     -- * Helper
     , withInit
-    , withMosqContext
+    , withMosquitto
     , withConnect
     -- * Utility
     , strerror
@@ -23,7 +27,6 @@ import Network.Mosquitto.C.Types
 
 import Control.Monad.IO.Class
 import Data.IORef
-import Data.Maybe(isJust, fromJust)
 import qualified Data.ByteString as BS
 import Data.ByteString.Internal(toForeignPtr)
 import Control.Exception(bracket, bracket_, throwIO, AssertionFailed(..))
@@ -34,54 +37,77 @@ import Foreign.C.String(withCStringLen, peekCString)
 import Foreign.C.Types(CInt(..))
 import Foreign.Marshal.Array(peekArray)
 
-data MosqContext = MosqContext
-                       { contextMosq      :: !Mosq
-                       , contextEvents    :: IORef [MosqEvent]
-                       , contextCallbacks :: ![FunPtr ()]
-                       }
+data Mosquitto = Mosquitto
+                     { mosquittoObject    :: !Mosq
+                     , mosquittoEvents    :: IORef [Event]
+                     , mosquittoCallbacks :: ![FunPtr ()]
+                     }
 
-data MosqEvent = Message 
-                     { messageID      :: !Int
-                     , messageTopic   :: !String
-                     , messagePayload :: !BS.ByteString
-                     , messageQos     :: !Int
-                     , messageRetain  :: !Bool
-                     }
-               | ConnectResult
-                     { connectResultCode   :: !Int
-                     , connectResultString :: !String
-                     }
-               | DisconnectResult
-                     { disconnectResultCode   :: !Int
-                     , disconnectResultString :: !String
-                     }
+data Event = Message
+                 { messageID      :: !Int
+                 , messageTopic   :: !String
+                 , messagePayload :: !BS.ByteString
+                 , messageQos     :: !Int
+                 , messageRetain  :: !Bool
+                 }
+           | ConnectResult
+                 { connectResultCode   :: !Int
+                 , connectResultString :: !String
+                 }
+           | DisconnectResult
+                 { disconnectResultCode   :: !Int
+                 , disconnectResultString :: !String
+                 }
   deriving Show
 
-newMosqContext :: Mosq -> IO MosqContext
-newMosqContext mosq = if mosq == nullPtr
+initializeMosquittoLib :: IO ()
+initializeMosquittoLib = do
+    result <- c_mosquitto_lib_init
+    if result == 0
+        then return ()
+        else do
+            msg <- strerror $ fromIntegral result
+            throwIO $ AssertionFailed $ "initializeMosquitto: " ++ msg
+
+cleanupMosquittoLib :: IO ()
+cleanupMosquittoLib = do
+    result <- c_mosquitto_lib_cleanup
+    if result == 0
+        then return ()
+        else do
+            msg <- strerror $ fromIntegral result
+            throwIO $ AssertionFailed $ "cleanupMosquittoLib: " ++ msg
+
+newMosquitto :: Maybe String -> IO Mosquitto
+newMosquitto Nothing  = c_mosquitto_new nullPtr 1 nullPtr >>= newMosquitto'
+newMosquitto (Just s) = (withCStringLen s $ \(sC, _) ->
+                           c_mosquitto_new sC 1 nullPtr) >>= newMosquitto'
+
+newMosquitto' :: Mosq -> IO Mosquitto
+newMosquitto' mosq = if mosq == nullPtr
     then throwIO $ AssertionFailed "invalid mosq object"
     else do
-        events <- newIORef ([] :: [MosqEvent])
+        events <- newIORef ([] :: [Event])
         connectCallbackC <- wrapOnConnectCallback (connectCallback events)
         c_mosquitto_connect_callback_set mosq connectCallbackC
         messageCallbackC <- wrapOnMessageCallback (messageCallback events)
         c_mosquitto_message_callback_set mosq messageCallbackC
         disconnectCallbackC <- wrapOnDisconnectCallback (disconnectCallback events)
         c_mosquitto_disconnect_callback_set mosq disconnectCallbackC
-        return MosqContext { contextMosq = mosq
-                           , contextEvents = events
-                           , contextCallbacks = [ castFunPtr connectCallbackC
+        return Mosquitto { mosquittoObject    = mosq
+                         , mosquittoEvents    = events
+                         , mosquittoCallbacks = [ castFunPtr connectCallbackC
                                                 , castFunPtr messageCallbackC
                                                 , castFunPtr disconnectCallbackC
                                                 ]
-                           }
+                         }
   where
-    connectCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> CInt -> IO ()
+    connectCallback :: IORef [Event] -> Mosq -> Ptr () -> CInt -> IO ()
     connectCallback events _mosq _ result = do
         let code = fromIntegral result
         str <- strerror code
         pushEvent events $ ConnectResult code str
-    messageCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> Ptr MessageC -> IO ()
+    messageCallback :: IORef [Event] -> Mosq -> Ptr () -> Ptr MessageC -> IO ()
     messageCallback events _mosq _ messageC = do
         msg   <- peek messageC
         topic <- peekCString (messageCTopic msg)
@@ -91,64 +117,66 @@ newMosqContext mosq = if mosq == nullPtr
                                    (BS.pack payload)
                                    (fromIntegral $ messageCQos msg)
                                    (messageCRetain msg)
-    disconnectCallback :: IORef [MosqEvent] -> Mosq -> Ptr () -> CInt -> IO ()
+    disconnectCallback :: IORef [Event] -> Mosq -> Ptr () -> CInt -> IO ()
     disconnectCallback events _mosq _ result = do
         let code = fromIntegral result
         str <- strerror code
         pushEvent events $ DisconnectResult code str
+    pushEvent :: IORef [Event] -> Event -> IO ()
+    pushEvent ref e = do
+        es <- readIORef ref
+        writeIORef ref (e:es)
 
-freeMosqContext :: MosqContext -> IO ()
-freeMosqContext context = mapM_ freeHaskellFunPtr (contextCallbacks context)
+destroyMosquitto :: Mosquitto -> IO ()
+destroyMosquitto moquitto = do
+    mapM_ freeHaskellFunPtr (mosquittoCallbacks moquitto)
+    writeIORef (mosquittoEvents moquitto) []
+    c_mosquitto_destroy (mosquittoObject moquitto)
 
-pushEvent :: IORef [MosqEvent] -> MosqEvent -> IO ()
-pushEvent ref e = do
-    es <- readIORef ref
-    writeIORef ref (e:es)
-
-setWill :: MosqContext -> String -> BS.ByteString -> Int -> Bool -> IO Int
-setWill context topicName payload qos retain = do
+setWill :: Mosquitto -> String -> BS.ByteString -> Int -> Bool -> IO Int
+setWill moquitto topicName payload qos retain = do
     let (payloadFP, off, _len) = toForeignPtr payload
     fmap fromIntegral $ withCStringLen topicName $ \(topicNameC, _) ->
                         withForeignPtr payloadFP $ \payloadP -> do
-                          c_mosquitto_will_set (contextMosq context)
+                          c_mosquitto_will_set (mosquittoObject moquitto)
                                                topicNameC
                                                (fromIntegral (BS.length payload))
                                                (payloadP `plusPtr` off)
                                                (fromIntegral qos)
                                                (if retain then 1 else 0)
 
-clearWill :: MosqContext -> IO Int
-clearWill context = c_mosquitto_will_clear (contextMosq context) >>= return . fromIntegral
+clearWill :: Mosquitto -> IO Int
+clearWill moquitto = c_mosquitto_will_clear (mosquittoObject moquitto) >>= return . fromIntegral
 
-connect :: MosqContext -> String -> Int -> Int -> IO Int
-connect context hostname port keepAlive =
+connect :: Mosquitto -> String -> Int -> Int -> IO Int
+connect moquitto hostname port keepAlive =
     fmap fromIntegral . withCStringLen hostname $ \(hostnameC, _len) ->
-        c_mosquitto_connect (contextMosq context) hostnameC (fromIntegral port) (fromIntegral keepAlive)
+        c_mosquitto_connect (mosquittoObject moquitto) hostnameC (fromIntegral port) (fromIntegral keepAlive)
 
-disconnect :: MosqContext -> IO Int
-disconnect context =
-    fmap fromIntegral . c_mosquitto_disconnect $ contextMosq context
+disconnect :: Mosquitto -> IO Int
+disconnect moquitto =
+    fmap fromIntegral . c_mosquitto_disconnect $ mosquittoObject moquitto
 
-getNextEvents :: MosqContext -> Int -> IO (Int, [MosqEvent])
-getNextEvents context timeout = do
-    result <- fmap fromIntegral . liftIO $ c_mosquitto_loop (contextMosq context) (fromIntegral timeout) 1
+getNextEvents :: Mosquitto -> Int -> IO (Int, [Event])
+getNextEvents moquitto timeout = do
+    result <- fmap fromIntegral . liftIO $ c_mosquitto_loop (mosquittoObject moquitto) (fromIntegral timeout) 1
     if result == 0
-      then do events <- liftIO . fmap reverse $ readIORef (contextEvents context)
-              writeIORef (contextEvents context) []
+      then do events <- liftIO . fmap reverse $ readIORef (mosquittoEvents moquitto)
+              writeIORef (mosquittoEvents moquitto) []
               return (result, events)
       else return (result, [])
 
-subscribe :: MosqContext -> String -> Int -> IO Int
-subscribe context topicName qos = do
+subscribe :: Mosquitto -> String -> Int -> IO Int
+subscribe moquitto topicName qos = do
     fmap fromIntegral . withCStringLen topicName $ \(topicNameC, _len) ->
-      c_mosquitto_subscribe (contextMosq context) nullPtr topicNameC (fromIntegral qos)
+      c_mosquitto_subscribe (mosquittoObject moquitto) nullPtr topicNameC (fromIntegral qos)
 
-publish :: MosqContext -> String -> BS.ByteString -> Int -> Bool -> IO Int
-publish context topicName payload qos retain = do
+publish :: Mosquitto -> String -> BS.ByteString -> Int -> Bool -> IO Int
+publish moquitto topicName payload qos retain = do
     let (payloadFP, off, _len) = toForeignPtr payload
     fmap fromIntegral $ withCStringLen topicName $ \(topicNameC, _) ->
                         withForeignPtr payloadFP $ \payloadP ->
-                          c_mosquitto_publish (contextMosq context)
+                          c_mosquitto_publish (mosquittoObject moquitto)
                                               nullPtr
                                               topicNameC
                                               (fromIntegral (BS.length payload))
@@ -164,33 +192,19 @@ strerror err = c_mosquitto_strerror (fromIntegral err) >>= peekCString
 -- Helper
 
 withInit :: IO a -> IO a
-withInit =
-    bracket_ initMosquitto c_mosquitto_lib_cleanup
-  where
-    initMosquitto :: IO ()
-    initMosquitto = do result <- c_mosquitto_lib_init
-                       if result == 0
-                         then return ()
-                         else throwIO $ AssertionFailed "failed to initialize mosquiotto"
+withInit = bracket_ initializeMosquittoLib cleanupMosquittoLib
 
-withMosqContext :: Maybe String -> (MosqContext -> IO a) -> IO a
-withMosqContext maybeId action
-    | isJust maybeId = withCStringLen (fromJust maybeId) $ \(idC, _) ->
-                         bracket (c_mosquitto_new idC 1 nullPtr >>= newMosqContext) cleanup action
-    | otherwise      = bracket (c_mosquitto_new nullPtr 1 nullPtr >>= newMosqContext) cleanup action
-  where
-    cleanup :: MosqContext -> IO ()
-    cleanup ctx = do
-      freeMosqContext ctx
-      c_mosquitto_destroy (contextMosq ctx)
+withMosquitto :: Maybe String -> (Mosquitto -> IO a) -> IO a
+withMosquitto clientId = bracket (newMosquitto clientId) destroyMosquitto
 
-withConnect :: MosqContext -> String -> Int -> Int -> IO a -> IO a
-withConnect context hostname port keepAlive = bracket_ connectI (disconnect context)
+withConnect :: Mosquitto -> String -> Int -> Int -> IO a -> IO a
+withConnect moquitto hostname port keepAlive = bracket_ connectI (disconnect moquitto)
   where
     connectI :: IO ()
     connectI = do
-      result <- connect context hostname (fromIntegral port) (fromIntegral keepAlive)
+      result <- connect moquitto hostname (fromIntegral port) (fromIntegral keepAlive)
       if result == 0
         then return ()
-        else throwIO $ AssertionFailed $ "failed to connect: " ++ (show result)
+        else do err <- strerror result
+                throwIO $ AssertionFailed $ "withConnect:" ++ (show result) ++ ": " ++ err
 

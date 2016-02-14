@@ -67,38 +67,38 @@ interfaceSpec = do
         -- will
         (withCStringLen "test/will" $ \(topicNameC, _) ->
          withCStringLen "will message (1)" $ \(willC, len) ->
-          c_mosquitto_will_set mosq topicNameC (fromIntegral len) willC  2 0) >>= (`shouldBe` 0)
-        c_mosquitto_will_clear mosq >>= (`shouldBe` 0)
+          c_mosquitto_will_set mosq topicNameC (fromIntegral len) willC  2 0) `shouldReturn` 0
+        c_mosquitto_will_clear mosq `shouldReturn` 0
         (withCStringLen "test/will" $ \(topicNameC, _) ->
          withCStringLen "will message (2)" $ \(willC, len) ->
-          c_mosquitto_will_set mosq topicNameC (fromIntegral len) willC  2 0) >>= (`shouldBe` 0)
+          c_mosquitto_will_set mosq topicNameC (fromIntegral len) willC  2 0) `shouldReturn` 0
 
         -- connect to broker
         (withCStringLen "localhost" $
-          \(hostnameC, _len) -> c_mosquitto_connect mosq hostnameC 1883 500) >>= (`shouldBe` 0)
+          \(hostnameC, _len) -> c_mosquitto_connect mosq hostnameC 1883 500) `shouldReturn` 0
         -- subscribe/publish
         (withCStringLen "test/test" $ \(patternC, _len) ->
-          c_mosquitto_subscribe mosq nullPtr patternC 2) >>= (`shouldBe` 0)
+          c_mosquitto_subscribe mosq nullPtr patternC 2) `shouldReturn` 0
         (withCStringLen "test/test" $ \(topicNameC, _len) ->
-          c_mosquitto_publish mosq nullPtr topicNameC 9 topicNameC 2 0) >>= (`shouldBe` 0)
+          c_mosquitto_publish mosq nullPtr topicNameC 9 topicNameC 2 0) `shouldReturn` 0
 
         -- mosquitto_loop
-        replicateM_ 5 $ c_mosquitto_loop mosq 10 1 >>= (`shouldBe` 0) >> threadDelay 100000
+        replicateM_ 5 $ (c_mosquitto_loop mosq 10 1 `shouldReturn` 0) >> threadDelay 100000
         -- verify
-        fmap connected    (readIORef results) >>= (`shouldBe` True)
-        fmap subscribed   (readIORef results) >>= (`shouldBe` True)
-        fmap published    (readIORef results) >>= (`shouldBe` True)
-        fmap disconnected (readIORef results) >>= (`shouldBe` False)
+        fmap connected    (readIORef results) `shouldReturn` True
+        fmap subscribed   (readIORef results) `shouldReturn` True
+        fmap published    (readIORef results) `shouldReturn` True
+        fmap disconnected (readIORef results) `shouldReturn` False
 
         -- disconnect
-        c_mosquitto_disconnect mosq >>= (`shouldBe` 0)
+        c_mosquitto_disconnect mosq `shouldReturn` 0
         replicateM_ 3 $ c_mosquitto_loop mosq 10 1 >>= (`shouldSatisfy` (\x -> x == 0 || x == errNoConn)) >> threadDelay 10000
-        c_mosquitto_loop mosq 10 1 >>= (`shouldBe` errNoConn)
-        fmap disconnected (readIORef results) >>= (`shouldBe` True)
+        c_mosquitto_loop mosq 10 1 `shouldReturn` errNoConn
+        fmap disconnected (readIORef results) `shouldReturn` True
 
         -- cleanup
         c_mosquitto_destroy mosq
-        c_mosquitto_lib_cleanup >>= (`shouldBe` 0)
+        c_mosquitto_lib_cleanup `shouldReturn` 0
 
         -- free wrapped functions
         freeHaskellFunPtr disconnectCallbackC
@@ -132,13 +132,13 @@ interfaceErrorSpec :: Spec
 interfaceErrorSpec = do
     describe "mosquitto C functions - error case" $ do
       it "gets errNoConn errors" $ do
-        c_mosquitto_lib_init >>= (`shouldBe` 0)
+        c_mosquitto_lib_init `shouldReturn` 0
         mosq <- c_mosquitto_new nullPtr 1 nullPtr
         mosq `shouldSatisfy` (/= nullPtr)
         (withCStringLen "test/test" $ \(patternC, _len) ->
-          c_mosquitto_subscribe mosq nullPtr patternC 2) >>= (`shouldBe` errNoConn)
-        c_mosquitto_disconnect mosq >>= (`shouldBe` errNoConn)
+          c_mosquitto_subscribe mosq nullPtr patternC 2) `shouldReturn` errNoConn
+        c_mosquitto_disconnect mosq `shouldReturn` errNoConn
         c_mosquitto_strerror errNoConn >>= (`shouldSatisfy` (/= nullPtr))
         c_mosquitto_destroy mosq
-        c_mosquitto_lib_cleanup >>= (`shouldBe` 0)
+        c_mosquitto_lib_cleanup `shouldReturn` 0
 

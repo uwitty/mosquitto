@@ -5,7 +5,6 @@ module MosquittoSpec (main, spec) where
 import Network.Mosquitto
 
 import Test.Hspec
-import Control.Monad.Trans
 import Control.Concurrent(threadDelay)
 import qualified Data.ByteString as BS
 
@@ -19,32 +18,38 @@ helperSpec :: Spec
 helperSpec = do
     describe "initialize" $ do
       it "initializes lib" $ do
-        initialized <- liftIO $ withInit (return True)
+        initialized <- withInit (return True)
         initialized `shouldBe` True
 
     describe "connect" $ do
       it "connects to broker in localhost" $ do
-        connected <- liftIO $ withInit . withMosqContext Nothing $ \ctx -> withConnect ctx "localhost" 1883 60 (return True)
+        connected <- withInit . withMosquitto Nothing $ \m -> withConnect m "localhost" 1883 60 (return True)
         connected `shouldBe` True
+ 
+    describe "create Mosquitto object" $ do
+      it "initializes/cleanups" $ do
+        initializeMosquittoLib
+        newMosquitto Nothing >>= destroyMosquitto
+        cleanupMosquittoLib
 
 mosquittoSpec :: Spec
 mosquittoSpec = do
     describe "getNextEvents" $ do
       it "connects to broker in localhost" $ do
-        events <- liftIO $ withInit . withMosqContext Nothing $ \ctx -> do
-          _ <- connect ctx "localhost" 1883 500
-          _ <- subscribe ctx "test/test" 2
-          _ <- publish ctx "test/test" (BS.pack [84, 84, 84]) 2 False
-          es <- loop ctx 10 []
-          _ <- disconnect ctx
-          loop ctx 3 es
+        events <- withInit . withMosquitto Nothing $ \m -> do
+          _ <- connect m "localhost" 1883 500
+          _ <- subscribe m "test/test" 2
+          _ <- publish m "test/test" (BS.pack [84, 84, 84]) 2 False
+          es <- loop m 10 []
+          _ <- disconnect m
+          loop m 3 es
         events `shouldSatisfy` (\x -> (length x) > 0)
   where
-    loop :: MosqContext -> Int -> [MosqEvent] -> IO [MosqEvent]
-    loop ctx count events = do
+    loop :: Mosquitto -> Int -> [Event] -> IO [Event]
+    loop m count events = do
       if count == 0
         then return events
         else do
-             (_, es) <- getNextEvents ctx 500
+             (_, es) <- getNextEvents m 500
              threadDelay 100000
-             loop ctx (count - 1) (events ++ es)
+             loop m (count - 1) (events ++ es)
