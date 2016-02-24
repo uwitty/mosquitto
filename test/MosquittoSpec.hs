@@ -39,7 +39,8 @@ mosquittoSpec = do
         events <- withInit . withMosquitto Nothing $ \m -> do
           _ <- connect m "localhost" 1883 500
           _ <- subscribe m "test/test" 2
-          _ <- publish m "test/test" (BS.pack [84, 84, 84]) 2 False
+          (_, mid) <- publish m "test/test" (BS.pack [84, 84, 84]) 2 False
+          mid `shouldSatisfy` (> 0)
           es <- loop m 10 []
           _ <- disconnect m
           loop m 3 es

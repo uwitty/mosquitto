@@ -36,6 +36,8 @@ import Foreign.Storable(peek)
 import Foreign.C.String(withCStringLen, peekCString)
 import Foreign.C.Types(CInt(..))
 import Foreign.Marshal.Array(peekArray)
+import Foreign.Marshal.Utils(fromBool)
+import Foreign.Marshal.Alloc(malloc, free)
 
 data Mosquitto = Mosquitto
                      { mosquittoObject    :: !Mosq
@@ -58,6 +60,7 @@ data Event = Message
                  { disconnectResultCode   :: !Int
                  , disconnectResultString :: !String
                  }
+           | Published { messageID :: !Int }
   deriving Show
 
 initializeMosquittoLib :: IO ()
@@ -94,11 +97,14 @@ newMosquitto' mosq = if mosq == nullPtr
         c_mosquitto_message_callback_set mosq messageCallbackC
         disconnectCallbackC <- wrapOnDisconnectCallback (disconnectCallback events)
         c_mosquitto_disconnect_callback_set mosq disconnectCallbackC
+        publishCallbackC <- wrapOnPublishCallback (publishCallback events)
+        c_mosquitto_publish_callback_set mosq publishCallbackC
         return Mosquitto { mosquittoObject    = mosq
                          , mosquittoEvents    = events
                          , mosquittoCallbacks = [ castFunPtr connectCallbackC
                                                 , castFunPtr messageCallbackC
                                                 , castFunPtr disconnectCallbackC
+                                                , castFunPtr publishCallbackC
                                                 ]
                          }
   where
@@ -122,6 +128,9 @@ newMosquitto' mosq = if mosq == nullPtr
         let code = fromIntegral result
         str <- strerror code
         pushEvent events $ DisconnectResult code str
+    publishCallback :: IORef [Event] -> Mosq -> Ptr () -> CInt -> IO ()
+    publishCallback events _mosq _ mid = do
+        pushEvent events $ Published (fromIntegral mid)
     pushEvent :: IORef [Event] -> Event -> IO ()
     pushEvent ref e = do
         es <- readIORef ref
@@ -143,7 +152,7 @@ setWill moquitto topicName payload qos retain = do
                                                (fromIntegral (BS.length payload))
                                                (payloadP `plusPtr` off)
                                                (fromIntegral qos)
-                                               (if retain then 1 else 0)
+                                               (fromBool retain)
 
 clearWill :: Mosquitto -> IO Int
 clearWill moquitto = c_mosquitto_will_clear (mosquittoObject moquitto) >>= return . fromIntegral
@@ -171,18 +180,22 @@ subscribe moquitto topicName qos = do
     fmap fromIntegral . withCStringLen topicName $ \(topicNameC, _len) ->
       c_mosquitto_subscribe (mosquittoObject moquitto) nullPtr topicNameC (fromIntegral qos)
 
-publish :: Mosquitto -> String -> BS.ByteString -> Int -> Bool -> IO Int
+publish :: Mosquitto -> String -> BS.ByteString -> Int -> Bool -> IO (Int, Int)
 publish moquitto topicName payload qos retain = do
+    midC <- (malloc :: IO (Ptr CInt))
     let (payloadFP, off, _len) = toForeignPtr payload
-    fmap fromIntegral $ withCStringLen topicName $ \(topicNameC, _) ->
-                        withForeignPtr payloadFP $ \payloadP ->
-                          c_mosquitto_publish (mosquittoObject moquitto)
-                                              nullPtr
-                                              topicNameC
-                                              (fromIntegral (BS.length payload))
-                                              (payloadP `plusPtr` off)
-                                              (fromIntegral qos)
-                                              (if retain then 1 else 0)
+    res <- fmap fromIntegral $ withCStringLen topicName $ \(topicNameC, _) ->
+                               withForeignPtr payloadFP $ \payloadP ->
+                                 c_mosquitto_publish (mosquittoObject moquitto)
+                                                     midC
+                                                     topicNameC
+                                                     (fromIntegral (BS.length payload))
+                                                     (payloadP `plusPtr` off)
+                                                     (fromIntegral qos)
+                                                     (fromBool retain)
+    mid <- fromIntegral <$> peek midC
+    free midC
+    return (res, mid)
 
 -- Utility
 
