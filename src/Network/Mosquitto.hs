@@ -25,6 +25,7 @@ module Network.Mosquitto (
 import Network.Mosquitto.C.Interface
 import Network.Mosquitto.C.Types
 
+import Control.Monad
 import Control.Monad.IO.Class
 import Data.IORef
 import qualified Data.ByteString as BS
@@ -66,20 +67,16 @@ data Event = Message
 initializeMosquittoLib :: IO ()
 initializeMosquittoLib = do
     result <- c_mosquitto_lib_init
-    if result == 0
-        then return ()
-        else do
-            msg <- strerror $ fromIntegral result
-            throwIO $ AssertionFailed $ "initializeMosquitto: " ++ msg
+    when (result /= 0) $ do
+        msg <- strerror $ fromIntegral result
+        throwIO $ AssertionFailed $ "initializeMosquitto: " ++ msg
 
 cleanupMosquittoLib :: IO ()
 cleanupMosquittoLib = do
     result <- c_mosquitto_lib_cleanup
-    if result == 0
-        then return ()
-        else do
-            msg <- strerror $ fromIntegral result
-            throwIO $ AssertionFailed $ "cleanupMosquittoLib: " ++ msg
+    when (result /= 0) $ do
+        msg <- strerror $ fromIntegral result
+        throwIO $ AssertionFailed $ "cleanupMosquittoLib: " ++ msg
 
 newMosquitto :: Maybe String -> IO Mosquitto
 newMosquitto Nothing  = c_mosquitto_new nullPtr 1 nullPtr >>= newMosquitto'
@@ -170,10 +167,10 @@ getNextEvents :: Mosquitto -> Int -> IO (Int, [Event])
 getNextEvents moquitto timeout = do
     result <- fmap fromIntegral . liftIO $ c_mosquitto_loop (mosquittoObject moquitto) (fromIntegral timeout) 1
     if result == 0
-      then do events <- liftIO . fmap reverse $ readIORef (mosquittoEvents moquitto)
-              writeIORef (mosquittoEvents moquitto) []
-              return (result, events)
-      else return (result, [])
+        then do events <- liftIO . fmap reverse $ readIORef (mosquittoEvents moquitto)
+                writeIORef (mosquittoEvents moquitto) []
+                return (result, events)
+        else return (result, [])
 
 subscribe :: Mosquitto -> String -> Int -> IO Int
 subscribe moquitto topicName qos = do
@@ -216,8 +213,7 @@ withConnect moquitto hostname port keepAlive = bracket_ connectI (disconnect moq
     connectI :: IO ()
     connectI = do
       result <- connect moquitto hostname (fromIntegral port) (fromIntegral keepAlive)
-      if result == 0
-        then return ()
-        else do err <- strerror result
-                throwIO $ AssertionFailed $ "withConnect:" ++ (show result) ++ ": " ++ err
+      when (result /= 0) $ do
+          err <- strerror result
+          throwIO $ AssertionFailed $ "withConnect:" ++ (show result) ++ ": " ++ err
 
