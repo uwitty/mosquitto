@@ -34,7 +34,7 @@ import Control.Exception(bracket, bracket_, throwIO, AssertionFailed(..))
 import Foreign.Ptr(Ptr, FunPtr, nullPtr, plusPtr, castFunPtr, freeHaskellFunPtr)
 import Foreign.ForeignPtr(withForeignPtr)
 import Foreign.Storable(peek)
-import Foreign.C.String(withCStringLen, peekCString)
+import Foreign.C.String(withCString, peekCString)
 import Foreign.C.Types(CInt(..))
 import Foreign.Marshal.Array(peekArray)
 import Foreign.Marshal.Utils(fromBool)
@@ -80,7 +80,7 @@ cleanupMosquittoLib = do
 
 newMosquitto :: Maybe String -> IO Mosquitto
 newMosquitto Nothing  = c_mosquitto_new nullPtr 1 nullPtr >>= newMosquitto'
-newMosquitto (Just s) = (withCStringLen s $ \(sC, _) ->
+newMosquitto (Just s) = (withCString s $ \sC ->
                            c_mosquitto_new sC 1 nullPtr) >>= newMosquitto'
 
 newMosquitto' :: Mosq -> IO Mosquitto
@@ -142,7 +142,7 @@ destroyMosquitto moquitto = do
 setWill :: Mosquitto -> String -> BS.ByteString -> Int -> Bool -> IO Int
 setWill moquitto topicName payload qos retain = do
     let (payloadFP, off, _len) = toForeignPtr payload
-    fmap fromIntegral $ withCStringLen topicName $ \(topicNameC, _) ->
+    fmap fromIntegral $ withCString topicName $ \topicNameC ->
                         withForeignPtr payloadFP $ \payloadP -> do
                           c_mosquitto_will_set (mosquittoObject moquitto)
                                                topicNameC
@@ -156,7 +156,7 @@ clearWill moquitto = c_mosquitto_will_clear (mosquittoObject moquitto) >>= retur
 
 connect :: Mosquitto -> String -> Int -> Int -> IO Int
 connect moquitto hostname port keepAlive =
-    fmap fromIntegral . withCStringLen hostname $ \(hostnameC, _len) ->
+    fmap fromIntegral . withCString hostname $ \hostnameC ->
         c_mosquitto_connect (mosquittoObject moquitto) hostnameC (fromIntegral port) (fromIntegral keepAlive)
 
 disconnect :: Mosquitto -> IO Int
@@ -174,14 +174,14 @@ getNextEvents moquitto timeout = do
 
 subscribe :: Mosquitto -> String -> Int -> IO Int
 subscribe moquitto topicName qos = do
-    fmap fromIntegral . withCStringLen topicName $ \(topicNameC, _len) ->
+    fmap fromIntegral . withCString topicName $ \topicNameC ->
       c_mosquitto_subscribe (mosquittoObject moquitto) nullPtr topicNameC (fromIntegral qos)
 
 publish :: Mosquitto -> String -> BS.ByteString -> Int -> Bool -> IO (Int, Int)
 publish moquitto topicName payload qos retain = do
     midC <- (malloc :: IO (Ptr CInt))
     let (payloadFP, off, _len) = toForeignPtr payload
-    res <- fmap fromIntegral $ withCStringLen topicName $ \(topicNameC, _) ->
+    res <- fmap fromIntegral $ withCString topicName $ \topicNameC ->
                                withForeignPtr payloadFP $ \payloadP ->
                                  c_mosquitto_publish (mosquittoObject moquitto)
                                                      midC
