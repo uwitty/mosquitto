@@ -134,17 +134,17 @@ newMosquitto' mosq = if mosq == nullPtr
         writeIORef ref (e:es)
 
 destroyMosquitto :: Mosquitto -> IO ()
-destroyMosquitto moquitto = do
-    mapM_ freeHaskellFunPtr (mosquittoCallbacks moquitto)
-    writeIORef (mosquittoEvents moquitto) []
-    c_mosquitto_destroy (mosquittoObject moquitto)
+destroyMosquitto mosquitto = do
+    mapM_ freeHaskellFunPtr (mosquittoCallbacks mosquitto)
+    writeIORef (mosquittoEvents mosquitto) []
+    c_mosquitto_destroy (mosquittoObject mosquitto)
 
 setWill :: Mosquitto -> String -> BS.ByteString -> Int -> Bool -> IO Int
-setWill moquitto topicName payload qos retain = do
+setWill mosquitto topicName payload qos retain = do
     let (payloadFP, off, _len) = toForeignPtr payload
     fmap fromIntegral $ withCString topicName $ \topicNameC ->
                         withForeignPtr payloadFP $ \payloadP -> do
-                          c_mosquitto_will_set (mosquittoObject moquitto)
+                          c_mosquitto_will_set (mosquittoObject mosquitto)
                                                topicNameC
                                                (fromIntegral (BS.length payload))
                                                (payloadP `plusPtr` off)
@@ -152,38 +152,38 @@ setWill moquitto topicName payload qos retain = do
                                                (fromBool retain)
 
 clearWill :: Mosquitto -> IO Int
-clearWill moquitto = c_mosquitto_will_clear (mosquittoObject moquitto) >>= return . fromIntegral
+clearWill mosquitto = c_mosquitto_will_clear (mosquittoObject mosquitto) >>= return . fromIntegral
 
 connect :: Mosquitto -> String -> Int -> Int -> IO Int
-connect moquitto hostname port keepAlive =
+connect mosquitto hostname port keepAlive =
     fmap fromIntegral . withCString hostname $ \hostnameC ->
-        c_mosquitto_connect (mosquittoObject moquitto) hostnameC (fromIntegral port) (fromIntegral keepAlive)
+        c_mosquitto_connect (mosquittoObject mosquitto) hostnameC (fromIntegral port) (fromIntegral keepAlive)
 
 disconnect :: Mosquitto -> IO Int
-disconnect moquitto =
-    fmap fromIntegral . c_mosquitto_disconnect $ mosquittoObject moquitto
+disconnect mosquitto =
+    fmap fromIntegral . c_mosquitto_disconnect $ mosquittoObject mosquitto
 
 getNextEvents :: Mosquitto -> Int -> IO (Int, [Event])
-getNextEvents moquitto timeout = do
-    result <- fmap fromIntegral . liftIO $ c_mosquitto_loop (mosquittoObject moquitto) (fromIntegral timeout) 1
+getNextEvents mosquitto timeout = do
+    result <- fmap fromIntegral . liftIO $ c_mosquitto_loop (mosquittoObject mosquitto) (fromIntegral timeout) 1
     if result == 0
-        then do events <- liftIO . fmap reverse $ readIORef (mosquittoEvents moquitto)
-                writeIORef (mosquittoEvents moquitto) []
+        then do events <- liftIO . fmap reverse $ readIORef (mosquittoEvents mosquitto)
+                writeIORef (mosquittoEvents mosquitto) []
                 return (result, events)
         else return (result, [])
 
 subscribe :: Mosquitto -> String -> Int -> IO Int
-subscribe moquitto topicName qos = do
+subscribe mosquitto topicName qos = do
     fmap fromIntegral . withCString topicName $ \topicNameC ->
-      c_mosquitto_subscribe (mosquittoObject moquitto) nullPtr topicNameC (fromIntegral qos)
+      c_mosquitto_subscribe (mosquittoObject mosquitto) nullPtr topicNameC (fromIntegral qos)
 
 publish :: Mosquitto -> String -> BS.ByteString -> Int -> Bool -> IO (Int, Int)
-publish moquitto topicName payload qos retain = do
+publish mosquitto topicName payload qos retain = do
     midC <- (malloc :: IO (Ptr CInt))
     let (payloadFP, off, _len) = toForeignPtr payload
     res <- fmap fromIntegral $ withCString topicName $ \topicNameC ->
                                withForeignPtr payloadFP $ \payloadP ->
-                                 c_mosquitto_publish (mosquittoObject moquitto)
+                                 c_mosquitto_publish (mosquittoObject mosquitto)
                                                      midC
                                                      topicNameC
                                                      (fromIntegral (BS.length payload))
@@ -208,11 +208,11 @@ withMosquitto :: Maybe String -> (Mosquitto -> IO a) -> IO a
 withMosquitto clientId = bracket (newMosquitto clientId) destroyMosquitto
 
 withConnect :: Mosquitto -> String -> Int -> Int -> IO a -> IO a
-withConnect moquitto hostname port keepAlive = bracket_ connectI (disconnect moquitto)
+withConnect mosquitto hostname port keepAlive = bracket_ connectI (disconnect mosquitto)
   where
     connectI :: IO ()
     connectI = do
-      result <- connect moquitto hostname (fromIntegral port) (fromIntegral keepAlive)
+      result <- connect mosquitto hostname (fromIntegral port) (fromIntegral keepAlive)
       when (result /= 0) $ do
           err <- strerror result
           throwIO $ AssertionFailed $ "withConnect:" ++ (show result) ++ ": " ++ err
