@@ -27,7 +27,7 @@ versionSpec = do
       it "resturns version" $ do
         version <- c_mosquitto_lib_version nullPtr nullPtr nullPtr
         version `shouldSatisfy` (\v -> v > 0)
-        p <- mallocBytes (sizeOf dummy) :: IO (Ptr CInt)
+        p <- mallocBytes (3 * sizeOf dummy) :: IO (Ptr CInt)
         _ <- c_mosquitto_lib_version p (p `plusPtr` (sizeOf dummy)) (p `plusPtr` (2 * sizeOf dummy))
         major    <- peek p
         minor    <- peekElemOff p 1
