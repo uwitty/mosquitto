@@ -22,7 +22,7 @@ library
                    , Network.Mosquitto.C.Types
                    , Network.Mosquitto.C.Interface
   -- other-modules:
-  build-depends:     base >=4.8 && <4.9
+  build-depends:     base >=4.8 && <=4.9.0.0
                    , transformers
                    , bytestring
   hs-source-dirs:    src
